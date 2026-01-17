@@ -44,7 +44,7 @@ function Update-DefaultOutput {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="MKVMerge Template Processor" Height="580" Width="700"
+        Title="MKVMerge Template Processor" Height="500" Width="700"
         WindowStartupLocation="CenterScreen" AllowsTransparency="True" WindowStyle="None" 
         Background="Transparent" Name="MainWindow" ResizeMode="CanResize">
     <shell:WindowChrome.WindowChrome>
