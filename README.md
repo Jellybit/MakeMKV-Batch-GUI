@@ -52,7 +52,7 @@ To create a standalone executable without the console window, follow these steps
 ```powershell
 Install-Module ps2exe
 Set-ExecutionPolicy RemoteSigned -Scope Process -Force
-ps2exe "MakeMKV Batch Gui.ps1" "MakeMKV Batch Gui.exe" -noConsole
+ps2exe "MakeMKVBatchGui.ps1" "MakeMKVBatchGui.exe" -noConsole
 
 ```
 
