@@ -1,12 +1,8 @@
-Here is a comprehensive `README.md` for your GitHub repository, following the format and style of your previous project.
-
----
-
 # MakeMKV Batch GUI
 
 A PowerShell-based GUI tool designed to batch process entire seasons of television shows using [MKVToolNix](https://mkvtoolnix.download/) command templates. This is particularly useful when you need to apply identical track changes (renaming, reordering, or merging tracks from different sources) across dozens of files at once.
 
-
+<img width="875" height="613" alt="image" src="https://github.com/user-attachments/assets/30d0bafc-e6d9-4a09-b70e-a69f144d0024" />
 
 ## Why use this?
 
@@ -24,6 +20,8 @@ Doing this manually in the MKVToolNix GUI is tedious for 20+ episodes. This tool
 * **Audio Notification:** Plays a system "ding" when the entire batch is finished.
 
 ## How to Use
+
+<img width="1497" height="895" alt="image" src="https://github.com/user-attachments/assets/d855b29f-c557-4655-9495-820d9e99510f" />
 
 ### 1. Create your Template
 
@@ -46,7 +44,6 @@ Doing this manually in the MKVToolNix GUI is tedious for 20+ episodes. This tool
 * **Input Order Matters:** Input 1 and Input 2 correspond strictly to the order in which files were added to the MKVToolNix template. If you muxed File A and File B in the template, ensure the "File A" group is in Input 1.
 * **Matching Counts:** When using two inputs, the number of files in Input 1 must match the number of files in Input 2. The script processes them in alphabetical order.
 * **MKVToolNix Required:** You must have MKVToolNix installed on your system. The script looks for `mkvmerge.exe` based on the path provided in your template command.
-* **Caret Escaping:** The script is designed to handle the `^` (caret) escaping symbols used by the MKVToolNix "Copy Command Line" feature automatically.
 
 ## Compile Standalone
 
