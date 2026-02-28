@@ -2,7 +2,7 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 
 # --- Configuration & Helpers ---
-$Global:PathDelimiter = "|||" 
+$Global:PathDelimiter = "|||"
 
 function Show-MessageBox {
     param ([string]$Message, [string]$Title = "MKVMerge Batcher", [string]$Type = "Info")
@@ -14,18 +14,12 @@ function Show-MessageBox {
 function Get-SelectedPaths {
     param ($InputString)
     if ([string]::IsNullOrWhiteSpace($InputString)) { return @() }
-    
-    # Check for multiple paths joined by delimiter
     if ($InputString -like "*$($Global:PathDelimiter)*") {
         return @($InputString -split [regex]::Escape($Global:PathDelimiter) | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
     }
-    
-    # Check if input is a directory
     if (Test-Path $InputString -PathType Container) {
         return @(Get-ChildItem -LiteralPath $InputString | Where-Object { ! $_.PSIsContainer } | Select-Object -ExpandProperty FullName)
     }
-    
-    # Single file path - wrapped in @() to prevent PowerShell from unwrapping it into a string later
     return @($InputString)
 }
 
@@ -44,8 +38,8 @@ function Update-DefaultOutput {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="MKVMerge Template Processor" Height="500" Width="700"
-        WindowStartupLocation="CenterScreen" AllowsTransparency="True" WindowStyle="None" 
+        Title="MKVMerge Template Processor" Height="650" Width="700"
+        WindowStartupLocation="CenterScreen" AllowsTransparency="True" WindowStyle="None"
         Background="Transparent" Name="MainWindow" ResizeMode="CanResize">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome ResizeBorderThickness="8" CaptionHeight="30" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
@@ -110,7 +104,7 @@ function Update-DefaultOutput {
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsEnabled" Value="False">
-                                                    <Setter TargetName="MainBorder" Property="Background" Value="#FF777777"/><Setter Property="Foreground" Value="White"/>
+                                                    <Setter TargetName="MainBorder" Property="Background" Value="#FF555555"/><Setter Property="Foreground" Value="#FFAAAAAA"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -120,6 +114,31 @@ function Update-DefaultOutput {
                             </Style>
                         </Button.Style>
                     </Button>
+
+                    <!-- Progress Section (hidden until processing starts) -->
+                    <StackPanel Name="ProgressPanel" Visibility="Collapsed" Margin="0,15,0,0">
+                        <TextBlock Name="StatusLabel" Foreground="#FFDDDDDD" FontWeight="SemiBold" Text="" Margin="0,0,0,8"/>
+                        <TextBlock Foreground="#FF999999" Text="Current File:" Margin="0,0,0,3" FontSize="11"/>
+                        <ProgressBar Name="FileProgress" Height="20" Minimum="0" Maximum="100" Value="0" Background="#FF3E3E42" Foreground="#FF007ACC" BorderBrush="#FF555555" BorderThickness="1"/>
+                        <TextBlock Foreground="#FF999999" Text="Overall:" Margin="0,8,0,3" FontSize="11"/>
+                        <ProgressBar Name="OverallProgress" Height="20" Minimum="0" Maximum="100" Value="0" Background="#FF3E3E42" Foreground="#FF00AA44" BorderBrush="#FF555555" BorderThickness="1"/>
+                        <Button Name="BtnCancel" Content="CANCEL" Height="38" Margin="0,12,0,0" FontWeight="Bold" Background="#FFE81123" Foreground="White">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Name="CancelBorder" Background="{TemplateBinding Background}" CornerRadius="3">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#FFCC0000"/></Trigger></Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Grid>
@@ -129,9 +148,12 @@ function Update-DefaultOutput {
 
 $Global:Window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
 $Controls = @{}
-"CloseButton","TxtInput1","BtnFile1","BtnDir1","TxtInput2","BtnFile2","BtnDir2","TxtOutput","BtnOutputDir","TxtTemplate","BtnProcess" | ForEach-Object { $Controls[$_] = $Global:Window.FindName($_) }
+@("CloseButton","TxtInput1","BtnFile1","BtnDir1","TxtInput2","BtnFile2","BtnDir2",
+  "TxtOutput","BtnOutputDir","TxtTemplate","BtnProcess",
+  "ProgressPanel","StatusLabel","FileProgress","OverallProgress","BtnCancel"
+) | ForEach-Object { $Controls[$_] = $Global:Window.FindName($_) }
 
-# --- Events ---
+# --- Drag/Drop & Browse Events ---
 $OnDragOver = { param($s,$e) $e.Effects = [Windows.DragDropEffects]::Copy; $e.Handled = $true }
 $Controls.TxtInput1.Add_Drop({ param($s,$e) if ($e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) { $f = $e.Data.GetData([Windows.DataFormats]::FileDrop); $s.Text = $f -join $Global:PathDelimiter; Update-DefaultOutput -FirstPath $f[0] } })
 $Controls.TxtInput1.Add_PreviewDragOver($OnDragOver)
@@ -146,20 +168,35 @@ $Controls.BtnFile2.Add_Click({ $d = New-Object System.Windows.Forms.OpenFileDial
 $Controls.BtnDir2.Add_Click({ $d = New-Object System.Windows.Forms.FolderBrowserDialog; if ($d.ShowDialog() -eq "OK") { $Controls.TxtInput2.Text = $d.SelectedPath } })
 $Controls.BtnOutputDir.Add_Click({ $d = New-Object System.Windows.Forms.FolderBrowserDialog; if ($d.ShowDialog() -eq "OK") { $Controls.TxtOutput.Text = $d.SelectedPath } })
 
+# --- Synchronized state for cross-thread communication ---
+$Global:Sync = [hashtable]::Synchronized(@{
+    Cancel      = $false
+    CurrentProc = $null
+})
+
+# --- Cancel Button ---
+$Controls.BtnCancel.Add_Click({
+    $Global:Sync.Cancel = $true
+    try {
+        $p = $Global:Sync.CurrentProc
+        if ($p -and -not $p.HasExited) { $p.Kill() }
+    } catch {}
+})
+
 # --- Processing Engine ---
 $Controls.BtnProcess.Add_Click({
-    # We force these into arrays using @() to stop PowerShell from "unwrapping" single files into strings
-    $list1 = @(Get-SelectedPaths $Controls.TxtInput1.Text)
-    $list2 = @(Get-SelectedPaths $Controls.TxtInput2.Text)
-    $tpl = $Controls.TxtTemplate.Text
+    $list1  = @(Get-SelectedPaths $Controls.TxtInput1.Text)
+    $list2  = @(Get-SelectedPaths $Controls.TxtInput2.Text)
+    $tpl    = $Controls.TxtTemplate.Text
     $outDir = $Controls.TxtOutput.Text
 
+    # ---- Validation (runs on UI thread - messageboxes are fine here) ----
     if ($list1.Count -eq 0) { Show-MessageBox -Type "Error" -Message "Input 1 is empty!"; return }
     if ([string]::IsNullOrWhiteSpace($tpl)) { Show-MessageBox -Type "Error" -Message "Template is empty!"; return }
 
     $inputRegex = '\^"\^\(\^" .*? \^"\^\)\^"'
     $SlotMatches = [regex]::Matches($tpl, $inputRegex)
-    
+
     if ($SlotMatches.Count -eq 1 -and $list2.Count -gt 0) {
         if ((Show-MessageBox -Type "Question" -Message "Template has 1 slot, but List 2 has files. Ignore List 2?") -ne "Yes") { return }
     }
@@ -167,46 +204,156 @@ $Controls.BtnProcess.Add_Click({
         Show-MessageBox -Type "Error" -Message "File counts do not match!"; return
     }
 
-    $Controls.BtnProcess.Content = "PROCESSING FILES..."
-    $Controls.BtnProcess.IsEnabled = $false
-    $Global:Window.UpdateLayout()
-    [System.Windows.Forms.Application]::DoEvents()
+    # ---- Pre-build all commands on the UI thread (has access to all variables) ----
+    $jobs = [System.Collections.ArrayList]::new()
+    for ($i = 0; $i -lt $list1.Count; $i++) {
+        $f1 = $list1[$i]
+        $outName  = [System.IO.Path]::GetFileNameWithoutExtension($f1) + ".mkv"
+        $finalOut = Join-Path $outDir $outName
 
-    try {
-        for ($i = 0; $i -lt $list1.Count; $i++) {
-            $f1 = $list1[$i]
-            $outName = [System.IO.Path]::GetFileNameWithoutExtension($f1) + ".mkv"
-            $finalOut = Join-Path $outDir $outName
-            if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force }
+        $cmd = $tpl
+        $cmd = [regex]::Replace($cmd, '--output \^".*?\^"', "--output ^`"$finalOut^`"")
 
-            $cmd = $tpl
-            $cmd = [regex]::Replace($cmd, '--output \^".*?\^"', "--output ^`"$finalOut^`"")
-            
-            $iterMatches = [regex]::Matches($cmd, $inputRegex)
-            if ($iterMatches.Count -ge 1) { 
-                $cmd = $cmd.Replace($iterMatches[0].Value, ("^`"^(^`" ^`"$f1^`" ^`"^)^`"" )) 
-            }
-            if ($iterMatches.Count -ge 2 -and $i -lt $list2.Count) { 
-                $cmd = $cmd.Replace($iterMatches[1].Value, ("^`"^(^`" ^`"$($list2[$i])^`" ^`"^)^`"" )) 
-            }
-
-            $cleanCmd = $cmd -replace '\^', ''
-            Write-Host "`n>>> Processing [$($i+1)/$($list1.Count)]: $([System.IO.Path]::GetFileName($f1))"
-            
-            # The -match operator populates the automatic $matches variable
-            if ($cleanCmd -match '^"(.*?mkvmerge\.exe)"\s+(.*)$') {
-                $exe = $matches[1]
-                $args = $matches[2]
-                Start-Process -FilePath $exe -ArgumentList $args -Wait -NoNewWindow
-            } else {
-                Write-Host "Failed to parse command for: $f1"
-            }
+        $iterMatches = [regex]::Matches($cmd, $inputRegex)
+        if ($iterMatches.Count -ge 1) {
+            $cmd = $cmd.Replace($iterMatches[0].Value, ("^`"^(^`" ^`"$f1^`" ^`"^)^`""))
         }
-    } finally {
-        [System.Media.SystemSounds]::Asterisk.Play()
-        $Controls.BtnProcess.Content = "START BATCH PROCESSING"
-        $Controls.BtnProcess.IsEnabled = $true
+        if ($iterMatches.Count -ge 2 -and $i -lt $list2.Count) {
+            $cmd = $cmd.Replace($iterMatches[1].Value, ("^`"^(^`" ^`"$($list2[$i])^`" ^`"^)^`""))
+        }
+
+        $cleanCmd = $cmd -replace '\^', ''
+
+        if ($cleanCmd -match '^"(.*?mkvmerge\.exe)"\s+(.*)$') {
+            [void]$jobs.Add(@{
+                FileName = [System.IO.Path]::GetFileName($f1)
+                Exe      = $matches[1]
+                Args     = $matches[2]
+                OutDir   = $outDir
+            })
+        }
     }
+
+    if ($jobs.Count -eq 0) { Show-MessageBox -Type "Error" -Message "No valid commands could be built from the template."; return }
+
+    # ---- Switch UI to processing mode ----
+    $Controls.BtnProcess.Content   = "PROCESSING..."
+    $Controls.BtnProcess.IsEnabled = $false
+    $Controls.ProgressPanel.Visibility = "Visible"
+    $Controls.FileProgress.Value    = 0
+    $Controls.OverallProgress.Value = 0
+    $Controls.StatusLabel.Text      = "Starting..."
+    $Controls.BtnCancel.Visibility  = "Visible"
+    $Global:Sync.Cancel = $false
+    $Global:Sync.CurrentProc = $null
+
+    # ---- Store references the background thread needs in the sync hashtable ----
+    $Global:Sync.Window          = $Global:Window
+    $Global:Sync.StatusLabel     = $Controls.StatusLabel
+    $Global:Sync.FileProgress    = $Controls.FileProgress
+    $Global:Sync.OverallProgress = $Controls.OverallProgress
+    $Global:Sync.BtnProcess      = $Controls.BtnProcess
+    $Global:Sync.BtnCancel       = $Controls.BtnCancel
+    $Global:Sync.ProgressPanel   = $Controls.ProgressPanel
+    $Global:Sync.Jobs            = $jobs
+
+    # ---- Launch background runspace ----
+    $rs = [runspacefactory]::CreateRunspace()
+    $rs.ApartmentState = "STA"
+    $rs.Open()
+    $rs.SessionStateProxy.SetVariable("sync", $Global:Sync)
+
+    $ps = [powershell]::Create()
+    $ps.Runspace = $rs
+    [void]$ps.AddScript({
+        $total = $sync.Jobs.Count
+        $errors = [System.Collections.ArrayList]::new()
+
+        for ($i = 0; $i -lt $total; $i++) {
+            if ($sync.Cancel) { break }
+
+            $job = $sync.Jobs[$i]
+
+            # -- Update status via Dispatcher --
+            $sync.StatusText    = "[$($i+1) / $total]  $($job.FileName)"
+            $sync.OverallPct    = [int](($i / $total) * 100)
+            $sync.Window.Dispatcher.Invoke([Action]{
+                $sync.StatusLabel.Text      = $sync.StatusText
+                $sync.FileProgress.Value    = 0
+                $sync.OverallProgress.Value = $sync.OverallPct
+            })
+
+            # -- Ensure output directory exists --
+            if (-not (Test-Path $job.OutDir)) {
+                New-Item -ItemType Directory -Path $job.OutDir -Force | Out-Null
+            }
+
+            # -- Start mkvmerge with --gui-mode for parseable progress --
+            $proc = New-Object System.Diagnostics.Process
+            $proc.StartInfo.FileName               = $job.Exe
+            $proc.StartInfo.Arguments              = "--gui-mode " + $job.Args
+            $proc.StartInfo.UseShellExecute        = $false
+            $proc.StartInfo.RedirectStandardOutput = $true
+            $proc.StartInfo.CreateNoWindow         = $true
+            $proc.Start() | Out-Null
+            $sync.CurrentProc = $proc
+
+            # -- Read stdout line-by-line for progress --
+            while (-not $proc.StandardOutput.EndOfStream) {
+                if ($sync.Cancel) {
+                    try { $proc.Kill() } catch {}
+                    break
+                }
+                $line = $proc.StandardOutput.ReadLine()
+
+                # mkvmerge --gui-mode outputs: #GUI#progress XX%
+                if ($line -match '#GUI#progress\s+(\d+)') {
+                    $sync.FilePct    = [int]$Matches[1]
+                    $sync.OverallPct = [int](($i + $sync.FilePct / 100) / $total * 100)
+                    $sync.Window.Dispatcher.Invoke([Action]{
+                        $sync.FileProgress.Value    = $sync.FilePct
+                        $sync.OverallProgress.Value = $sync.OverallPct
+                    })
+                }
+                # Capture warnings/errors for summary
+                elseif ($line -match '#GUI#error' -or $line -match '#GUI#warning') {
+                    [void]$errors.Add("$($job.FileName): $line")
+                }
+            }
+
+            if (-not $sync.Cancel) {
+                $proc.WaitForExit()
+                if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 1) {
+                    [void]$errors.Add("$($job.FileName): mkvmerge exited with code $($proc.ExitCode)")
+                }
+            }
+            $proc.Dispose()
+        }
+
+        # -- Store results for the UI update --
+        $sync.WasCancelled = $sync.Cancel
+        $sync.TotalDone    = if ($sync.Cancel) { $i } else { $total }
+        $sync.Errors       = $errors
+
+        # -- Final UI update --
+        $sync.Window.Dispatcher.Invoke([Action]{
+            if ($sync.WasCancelled) {
+                $sync.StatusLabel.Text = "Cancelled after $($sync.TotalDone) of $total file(s)."
+            } elseif ($sync.Errors.Count -gt 0) {
+                $sync.StatusLabel.Text = "Done with $($sync.Errors.Count) warning(s)/error(s). Processed $total file(s)."
+            } else {
+                $sync.StatusLabel.Text = "Complete! Processed $total file(s) successfully."
+            }
+            $sync.FileProgress.Value      = 100
+            $sync.OverallProgress.Value   = 100
+            $sync.BtnProcess.Content      = "START BATCH PROCESSING"
+            $sync.BtnProcess.IsEnabled    = $true
+            $sync.BtnCancel.Visibility    = "Collapsed"
+            [System.Media.SystemSounds]::Asterisk.Play()
+        })
+    })
+
+    $ps.BeginInvoke() | Out-Null
 })
 
 $Global:Window.ShowDialog() | Out-Null
